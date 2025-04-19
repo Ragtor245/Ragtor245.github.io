@@ -234,9 +234,18 @@ export function RagEasyContentZh() {
                   <div className="flex items-center gap-2">
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm" className="text-gray-400 hover:text-white hover:bg-gray-800">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-gray-400 hover:text-white hover:bg-gray-800 group"
+                        >
                           <Database className="h-4 w-4 mr-1" />
                           知识库
+                          {selectedDatabase && (
+                            <span className="ml-1.5 text-xs bg-indigo-500 bg-opacity-30 text-indigo-200 px-1.5 py-0.5 rounded-full group-hover:bg-opacity-50">
+                              已选择
+                            </span>
+                          )}
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="cosmic-card border-gray-700 max-w-3xl">
@@ -254,7 +263,11 @@ export function RagEasyContentZh() {
                           <TabsContent value="public" className="mt-4">
                             <div className="space-y-4">
                               <div className="text-sm text-gray-300 mb-2">浏览或搜索可用的公共知识库</div>
-                              <DatabaseSelector onSelect={handleDatabaseSelect} uploadedFiles={uploadedFiles} />
+                              <DatabaseSelector
+                                onSelect={handleDatabaseSelect}
+                                uploadedFiles={uploadedFiles}
+                                selectedDatabase={selectedDatabase}
+                              />
                             </div>
                           </TabsContent>
 

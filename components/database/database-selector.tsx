@@ -56,9 +56,10 @@ const databaseCategories: DatabaseCategory[] = [
 type DatabaseSelectorProps = {
   onSelect: (databaseId: string) => void
   uploadedFiles?: File[]
+  selectedDatabase?: string | null
 }
 
-export function DatabaseSelector({ onSelect, uploadedFiles = [] }: DatabaseSelectorProps) {
+export function DatabaseSelector({ onSelect, uploadedFiles = [], selectedDatabase = null }: DatabaseSelectorProps) {
   const [expandedCategories, setExpandedCategories] = useState<string[]>([])
   const [searchQuery, setSearchQuery] = useState("")
 
@@ -108,13 +109,20 @@ export function DatabaseSelector({ onSelect, uploadedFiles = [] }: DatabaseSelec
               <button
                 key={index}
                 onClick={() => onSelect(file.name)}
-                className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
+                className={`flex w-full items-center rounded-md px-2 py-1.5 text-sm ${
+                  selectedDatabase === file.name
+                    ? "bg-indigo-600 bg-opacity-30 text-white"
+                    : "text-gray-300 hover:bg-gray-800 hover:text-white hover:bg-opacity-50"
+                } transition-colors relative`}
               >
                 <Database className="mr-2 h-3.5 w-3.5 text-indigo-400" />
                 <div className="flex flex-col items-start">
                   <span>{file.name}</span>
                   <span className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
                 </div>
+                {selectedDatabase === file.name && (
+                  <span className="absolute right-2 text-xs bg-indigo-500 px-1.5 py-0.5 rounded-full">已选择</span>
+                )}
               </button>
             ))}
           </div>
@@ -145,13 +153,20 @@ export function DatabaseSelector({ onSelect, uploadedFiles = [] }: DatabaseSelec
                   <button
                     key={database.id}
                     onClick={() => onSelect(database.id)}
-                    className="flex w-full items-center rounded-md px-2 py-1.5 text-sm text-gray-300 hover:bg-gray-800 hover:text-white"
+                    className={`flex w-full items-center rounded-md px-2 py-1.5 text-sm ${
+                      selectedDatabase === database.id
+                        ? "bg-indigo-600 bg-opacity-30 text-white"
+                        : "text-gray-300 hover:bg-gray-800 hover:text-white hover:bg-opacity-50"
+                    } transition-colors relative`}
                   >
                     <Database className="mr-2 h-3.5 w-3.5 text-indigo-400" />
                     <div className="flex flex-col items-start">
                       <span>{database.name}</span>
                       <span className="text-xs text-gray-500">{database.description}</span>
                     </div>
+                    {selectedDatabase === database.id && (
+                      <span className="absolute right-2 text-xs bg-indigo-500 px-1.5 py-0.5 rounded-full">已选择</span>
+                    )}
                   </button>
                 ))}
               </div>
