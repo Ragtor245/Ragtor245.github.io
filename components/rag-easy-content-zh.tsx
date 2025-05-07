@@ -1,29 +1,26 @@
 "use client"
 
+import { DialogTrigger } from "@/components/ui/dialog"
+
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Upload, Plus, Search, Info, ExternalLink, X, MessageSquare, Database } from "lucide-react"
+import { Upload, Plus, Search, Info, ExternalLink, X, Bot } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { ChatMessage } from "./chat/chat-message"
-import { BotSettings } from "./chat/bot-settings"
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
-import { UserSettings } from "./chat/user-settings"
 import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import OpenAI from "openai"
 
 type Message = {
   id: string
@@ -52,9 +49,16 @@ type KnowledgeItem = {
   source?: string
 }
 
+// OpenAI client configuration for Alibaba Cloud DashScope
+const client = new OpenAI({
+  apiKey: "sk-3ef418f395c54a94888a479894a62c83",
+  baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  dangerouslyAllowBrowser: true, // Enable usage in browser environment
+})
+const MODEL_NAME = "qwen-max"
+
 export function RagEasyContentZh() {
   // 状态管理
-  const [activeTab, setActiveTab] = useState("knowledge-base")
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "welcome",
@@ -335,7 +339,8 @@ export function RagEasyContentZh() {
         ...prev,
         {
           id: `system-${Date.now()}`,
-          content: "请先选择一个知识库再开始对话。",
+          content:
+            '请先选择一个知识库再开始对话。您也可以点击上方的"AI 助手"标签，使用更强大的Gradio界面与大模型交互。',
           isBot: true,
         },
       ])
@@ -372,47 +377,58 @@ export function RagEasyContentZh() {
       },
     ])
 
-    // 模拟API调用
-    // 在实际应用中，这里应该调用后端API，发送用户信息、选择的知识库和聊天内容
-    const userInfo = { name: userName, avatar: userAvatar }
-    const knowledgeBaseInfo = { id: selectedKnowledgeBase.id, name: selectedKnowledgeBase.name }
-    const chatInfo = { message: input, history: messages.map((m) => ({ content: m.content, isBot: m.isBot })) }
+    try {
+      // 准备历史消息格式
+      const messageHistory = messages.map((m) => ({
+        role: m.isBot ? "assistant" : "user",
+        content: m.content,
+      }))
 
-    // 这里应该是实际的API调用
-    // const response = await fetch('/api/chat', {
-    //   method: 'POST',
-    //   headers: { 'Content-Type': 'application/json' },
-    //   body: JSON.stringify({ userInfo, knowledgeBaseInfo, chatInfo })
-    // });
-    // const data = await response.json();
-
-    // 模拟响应
-    let response = ""
-    const possibleResponses = [
-      `根据"${selectedKnowledgeBase.name}"知识库的信息，您的问题"${input}"的答案是：\n\n这是一个模拟的回答，实际上会连接到后端API。这个回答会根据您选择的知识库和提问内容生成相关的回复。`,
-      `在"${selectedKnowledgeBase.name}"中找到了相关信息：\n\n1. 这个问题涉及到多个领域的知识\n2. 根据知识库中的资料，最佳的解释是...\n3. 您可能还对相关的话题感兴趣，如...\n\n希望这些信息对您有所帮助！`,
-      `"${selectedKnowledgeBase.name}"知识库提供的信息表明：\n\n这是一个很好的问题！根据我们的数据，这个问题的答案是多方面的。首先，需要考虑的是...其次，重要的因素包括...最后，不要忘记...`,
-    ]
-
-    const fullResponse = possibleResponses[Math.floor(Math.random() * possibleResponses.length)]
-    const words = fullResponse.split("")
-
-    let i = 0
-    const streamInterval = setInterval(() => {
-      if (i < words.length) {
-        response += words[i]
-        i++
-        // 更新流式消息
-        setMessages((prev) => prev.map((msg) => (msg.id === botMessageId ? { ...msg, content: response } : msg)))
-      } else {
-        clearInterval(streamInterval)
-        setIsStreaming(false)
-        setStreamingMessageId(null)
+      // 添加系统消息，告知模型使用的知识库
+      const systemMessage = {
+        role: "system",
+        content: `你是一个有帮助的AI助手，使用"${selectedKnowledgeBase.name}"知识库来回答问题。请基于知识库内容提供准确、有用的回答。`,
       }
-    }, 20)
 
-    // 在实际应用中，这里应该记录发送的信息
-    console.log("发送到后端的数据:", { userInfo, knowledgeBaseInfo, chatInfo })
+      // 添加用户当前的问题
+      const userMessage = {
+        role: "user",
+        content: input,
+      }
+
+      // 调用API进行流式响应
+      const stream = await client.chat.completions.create({
+        model: MODEL_NAME,
+        messages: [systemMessage, ...messageHistory, userMessage],
+        stream: true,
+      })
+
+      let fullResponse = ""
+
+      for await (const chunk of stream) {
+        const content = chunk.choices[0]?.delta?.content || ""
+        if (content) {
+          fullResponse += content
+          // 更新流式消息
+          setMessages((prev) => prev.map((msg) => (msg.id === botMessageId ? { ...msg, content: fullResponse } : msg)))
+        }
+      }
+
+      setIsStreaming(false)
+      setStreamingMessageId(null)
+    } catch (error) {
+      console.error("API调用错误:", error)
+
+      // 显示错误消息
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === botMessageId ? { ...msg, content: "抱歉，在处理您的请求时发生了错误。请稍后再试。" } : msg,
+        ),
+      )
+
+      setIsStreaming(false)
+      setStreamingMessageId(null)
+    }
   }
 
   // 处理键盘事件
@@ -437,8 +453,6 @@ export function RagEasyContentZh() {
         },
       ])
     }
-    // 自动切换到AI助手标签页
-    setActiveTab("ai-assistant")
   }
 
   // 处理知识库详情查看
@@ -503,37 +517,21 @@ export function RagEasyContentZh() {
       </div>
 
       {/* 主要内容区域 */}
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="w-full grid grid-cols-2 bg-gray-800 bg-opacity-50 p-1 rounded-lg mb-6">
-          <TabsTrigger
-            value="knowledge-base"
-            className="py-3 data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md transition-all"
-          >
-            <Database className="mr-2 h-5 w-5" />
-            公共知识库
-          </TabsTrigger>
-          <TabsTrigger
-            value="ai-assistant"
-            className="py-3 data-[state=active]:bg-indigo-600 data-[state=active]:text-white rounded-md transition-all"
-          >
-            <MessageSquare className="mr-2 h-5 w-5" />
-            AI 助手
-          </TabsTrigger>
-        </TabsList>
-
-        {/* 公共知识库视图 */}
-        <TabsContent value="knowledge-base" className="mt-0">
-          <Card className="cosmic-card overflow-hidden">
-            <CardHeader className="pb-3">
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-white">公共知识库</CardTitle>
+      <div className="space-y-6">
+        <Card className="cosmic-card overflow-hidden">
+          <CardHeader className="pb-3">
+            <div className="flex justify-between items-center">
+              <CardTitle className="text-white">公共知识库</CardTitle>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="flex items-center gap-1 cosmic-button" asChild>
+                  <a href="http://127.0.0.1:7864/" target="_blank" rel="noopener noreferrer">
+                    <Bot className="h-4 w-4" />
+                    <span>AI助手</span>
+                  </a>
+                </Button>
                 <Dialog>
                   <DialogTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="flex items-center gap-1 bg-indigo-600 bg-opacity-20 border-indigo-500 hover:bg-indigo-600 hover:bg-opacity-30"
-                    >
+                    <Button variant="outline" size="sm" className="flex items-center gap-1 cosmic-button">
                       <Plus className="h-4 w-4" />
                       <span>提供新知识库</span>
                     </Button>
@@ -647,279 +645,212 @@ export function RagEasyContentZh() {
                   </DialogContent>
                 </Dialog>
               </div>
-              <CardDescription className="text-gray-300">
-                浏览平台上的公共知识库，选择一个开始与AI助手对话
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {/* 搜索和过滤 */}
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                    <Input
-                      placeholder="搜索知识库..."
-                      className="pl-9 bg-gray-800 bg-opacity-50 border-gray-700 text-white"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                  </div>
-                  <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            </div>
+            <CardDescription className="text-gray-300">
+              浏览平台上的公共知识库，选择一个开始与AI助手对话
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {/* 搜索和过滤 */}
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="搜索知识库..."
+                    className="pl-9 bg-gray-800 bg-opacity-50 border-gray-700 text-white"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`whitespace-nowrap ${!selectedCategory ? "bg-indigo-600 bg-opacity-20 border-indigo-500" : "border-gray-700"}`}
+                    onClick={() => setSelectedCategory(null)}
+                  >
+                    全部
+                  </Button>
+                  {categories.map((category) => (
                     <Button
+                      key={category}
                       variant="outline"
                       size="sm"
-                      className={`whitespace-nowrap ${!selectedCategory ? "bg-indigo-600 bg-opacity-20 border-indigo-500" : "border-gray-700"}`}
-                      onClick={() => setSelectedCategory(null)}
+                      className={`whitespace-nowrap ${selectedCategory === category ? "bg-indigo-600 bg-opacity-20 border-indigo-500" : "border-gray-700"}`}
+                      onClick={() => setSelectedCategory(category === selectedCategory ? null : category)}
                     >
-                      全部
+                      {category}
                     </Button>
-                    {categories.map((category) => (
-                      <Button
-                        key={category}
-                        variant="outline"
-                        size="sm"
-                        className={`whitespace-nowrap ${selectedCategory === category ? "bg-indigo-600 bg-opacity-20 border-indigo-500" : "border-gray-700"}`}
-                        onClick={() => setSelectedCategory(category === selectedCategory ? null : category)}
-                      >
-                        {category}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* 知识库列表 */}
-                {filteredKnowledgeBases.length === 0 ? (
-                  <div className="text-center py-12">
-                    <div className="h-16 w-16 mx-auto rounded-full bg-gray-800 flex items-center justify-center mb-4">
-                      <Search className="h-8 w-8 text-gray-500" />
-                    </div>
-                    <h3 className="text-xl font-medium text-white mb-2">未找到匹配的知识库</h3>
-                    <p className="text-gray-300 max-w-md mx-auto">
-                      没有找到符合当前筛选条件的知识库。请尝试调整搜索关键词或选择不同的类别。
-                    </p>
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredKnowledgeBases.map((kb) => (
-                      <div
-                        key={kb.id}
-                        className={`p-4 rounded-lg border transition-all ${
-                          selectedKnowledgeBase?.id === kb.id
-                            ? "bg-indigo-600 bg-opacity-20 border-indigo-500"
-                            : "bg-gray-800 bg-opacity-50 border-gray-700 hover:bg-gray-700"
-                        }`}
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <h3 className="font-medium text-white mb-1">{kb.name}</h3>
-                            <p className="text-sm text-gray-200 line-clamp-2 mb-2">{kb.description}</p>
-                            <div className="flex flex-wrap gap-1 mb-3">
-                              {kb.tags.map((tag) => (
-                                <Badge
-                                  key={tag}
-                                  variant="outline"
-                                  className="bg-gray-800 bg-opacity-50 text-gray-200 text-xs"
-                                >
-                                  {tag}
-                                </Badge>
-                              ))}
-                            </div>
-                            <div className="flex items-center text-xs text-gray-300 space-x-3">
-                              <span>{kb.itemCount.toLocaleString()} 条目</span>
-                              <span>•</span>
-                              <span>创建者: {kb.createdBy}</span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex justify-between mt-4">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-indigo-300 hover:text-white hover:bg-gray-700"
-                            onClick={() => handleViewKnowledgeBaseDetail(kb)}
-                          >
-                            <Info className="h-4 w-4 mr-1" />
-                            详情
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={`${
-                              selectedKnowledgeBase?.id === kb.id
-                                ? "bg-indigo-600 text-white"
-                                : "bg-gray-800 bg-opacity-50 text-indigo-300 hover:text-indigo-200"
-                            }`}
-                            onClick={() => handleSelectKnowledgeBase(kb)}
-                          >
-                            {selectedKnowledgeBase?.id === kb.id ? "已选择" : "开始对话"}
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 知识库详情对话框 */}
-          <Dialog open={showKnowledgeBaseDetail} onOpenChange={setShowKnowledgeBaseDetail}>
-            <DialogContent className="cosmic-card border-gray-700 max-w-4xl">
-              <DialogHeader>
-                <DialogTitle className="text-white flex items-center justify-between">
-                  <span>{detailKnowledgeBase?.name}</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 w-8 p-0"
-                    onClick={() => setShowKnowledgeBaseDetail(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </DialogTitle>
-                <DialogDescription className="text-gray-300">{detailKnowledgeBase?.description}</DialogDescription>
-              </DialogHeader>
-
-              <div className="space-y-6">
-                <div className="flex flex-wrap gap-2">
-                  {detailKnowledgeBase?.tags.map((tag) => (
-                    <Badge key={tag} className="bg-indigo-600 bg-opacity-20">
-                      {tag}
-                    </Badge>
                   ))}
                 </div>
+              </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                    <div className="text-gray-300">条目数量</div>
-                    <div className="text-white font-medium">{detailKnowledgeBase?.itemCount.toLocaleString()}</div>
+              {/* 知识库列表 */}
+              {filteredKnowledgeBases.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="h-16 w-16 mx-auto rounded-full bg-gray-800 flex items-center justify-center mb-4">
+                    <Search className="h-8 w-8 text-gray-500" />
                   </div>
-                  <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                    <div className="text-gray-300">分类</div>
-                    <div className="text-white font-medium">{detailKnowledgeBase?.category}</div>
-                  </div>
-                  <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                    <div className="text-gray-300">创建者</div>
-                    <div className="text-white font-medium">{detailKnowledgeBase?.createdBy}</div>
-                  </div>
-                  <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
-                    <div className="text-gray-300">创建日期</div>
-                    <div className="text-white font-medium">{detailKnowledgeBase?.createdAt}</div>
-                  </div>
+                  <h3 className="text-xl font-medium text-white mb-2">未找到匹配的知识库</h3>
+                  <p className="text-gray-300 max-w-md mx-auto">
+                    没有找到符合当前筛选条件的知识库。请尝试调整搜索关键词或选择不同的类别。
+                  </p>
                 </div>
-
-                <div>
-                  <h3 className="text-lg font-medium text-white mb-3">知识库预览</h3>
-                  <div className="space-y-3">
-                    {detailKnowledgeBase?.previewItems?.map((item) => (
-                      <div key={item.id} className="bg-gray-800 bg-opacity-50 p-4 rounded-lg">
-                        <h4 className="font-medium text-white mb-2">{item.title}</h4>
-                        <p className="text-gray-200 text-sm">{item.content}</p>
-                        {item.source && (
-                          <div className="mt-2 flex items-center text-xs text-indigo-300">
-                            <ExternalLink className="h-3 w-3 mr-1" />
-                            <span>{item.source}</span>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {filteredKnowledgeBases.map((kb) => (
+                    <div
+                      key={kb.id}
+                      className={`p-4 rounded-lg border transition-all ${
+                        selectedKnowledgeBase?.id === kb.id
+                          ? "bg-indigo-600 bg-opacity-20 border-indigo-500"
+                          : "bg-gray-800 bg-opacity-50 border-gray-700 hover:bg-gray-700"
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-white mb-1">{kb.name}</h3>
+                          <p className="text-sm text-gray-200 line-clamp-2 mb-2">{kb.description}</p>
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {kb.tags.map((tag) => (
+                              <Badge
+                                key={tag}
+                                variant="outline"
+                                className="bg-gray-800 bg-opacity-50 text-gray-200 text-xs"
+                              >
+                                {tag}
+                              </Badge>
+                            ))}
                           </div>
-                        )}
+                          <div className="flex items-center text-xs text-gray-300 space-x-3">
+                            <span>{kb.itemCount.toLocaleString()} 条目</span>
+                            <span>•</span>
+                            <span>创建者: {kb.createdBy}</span>
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex justify-between">
-                  <Button
-                    variant="outline"
-                    className="border-gray-700 text-gray-300 hover:text-white"
-                    onClick={() => setShowKnowledgeBaseDetail(false)}
-                  >
-                    关闭
-                  </Button>
-                  <Button
-                    className="cosmic-button"
-                    onClick={() => {
-                      if (detailKnowledgeBase) {
-                        handleSelectKnowledgeBase(detailKnowledgeBase)
-                        setShowKnowledgeBaseDetail(false)
-                      }
-                    }}
-                  >
-                    选择此知识库
-                  </Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-        </TabsContent>
-
-        {/* AI助手视图 */}
-        <TabsContent value="ai-assistant" className="mt-0">
-          <Card className="cosmic-card overflow-hidden h-[700px] flex flex-col">
-            <CardHeader className="pb-3 border-b border-gray-800">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-white text-lg">AI 助手</CardTitle>
-                  {selectedKnowledgeBase && (
-                    <Badge className="bg-indigo-600 bg-opacity-20 text-indigo-300">{selectedKnowledgeBase.name}</Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2">
-                  <UserSettings userName={userName} userAvatar={userAvatar} onSave={handleUserSettingsSave} />
-                  <BotSettings botName={botName} botAvatar={botAvatar} onSave={handleBotSettingsSave} />
-                </div>
-              </div>
-            </CardHeader>
-
-            <ScrollArea className="flex-1 p-4">
-              <div className="space-y-4">
-                {messages.map((message) => (
-                  <ChatMessage
-                    key={message.id}
-                    content={message.content}
-                    isBot={message.isBot}
-                    name={message.isBot ? botName : userName}
-                    avatar={message.isBot ? botAvatar : userAvatar}
-                    isStreaming={isStreaming && streamingMessageId === message.id}
-                  />
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-            </ScrollArea>
-
-            <div className="border-t border-gray-800 p-3">
-              <div className="flex gap-2">
-                <Textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder={selectedKnowledgeBase ? "输入您的问题..." : "请先选择一个知识库..."}
-                  className="min-h-[60px] resize-none bg-gray-800 bg-opacity-50 border-gray-700 text-white placeholder:text-gray-400"
-                  disabled={!selectedKnowledgeBase}
-                />
-                <Button
-                  onClick={handleSendMessage}
-                  disabled={!input.trim() || isStreaming || !selectedKnowledgeBase}
-                  className="cosmic-button self-end"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-              {!selectedKnowledgeBase && (
-                <div className="mt-4 text-center">
-                  <p className="text-gray-300 mb-2">请先选择一个知识库以开始对话</p>
-                  <Button
-                    variant="outline"
-                    className="border-indigo-500 text-indigo-300 hover:text-indigo-200"
-                    onClick={() => setActiveTab("knowledge-base")}
-                  >
-                    <Database className="mr-2 h-4 w-4" />
-                    浏览知识库
-                  </Button>
+                      <div className="flex justify-between mt-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-indigo-300 hover:text-white hover:bg-gray-700"
+                          onClick={() => handleViewKnowledgeBaseDetail(kb)}
+                        >
+                          <Info className="h-4 w-4 mr-1" />
+                          详情
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`${
+                            selectedKnowledgeBase?.id === kb.id
+                              ? "bg-indigo-600 text-white"
+                              : "bg-gray-800 bg-opacity-50 text-indigo-300 hover:text-indigo-200"
+                          }`}
+                          asChild
+                        >
+                          <a href="http://127.0.0.1:7864/" target="_blank" rel="noopener noreferrer">
+                            {selectedKnowledgeBase?.id === kb.id ? "已选择" : "开始对话"}
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          </CardContent>
+        </Card>
+
+        {/* 知识库详情对话框 */}
+        <Dialog open={showKnowledgeBaseDetail} onOpenChange={setShowKnowledgeBaseDetail}>
+          <DialogContent className="cosmic-card border-gray-700 max-w-4xl">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center justify-between">
+                <span>{detailKnowledgeBase?.name}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 w-8 p-0"
+                  onClick={() => setShowKnowledgeBaseDetail(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </DialogTitle>
+              <DialogDescription className="text-gray-300">{detailKnowledgeBase?.description}</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-6">
+              <div className="flex flex-wrap gap-2">
+                {detailKnowledgeBase?.tags.map((tag) => (
+                  <Badge key={tag} className="bg-indigo-600 bg-opacity-20">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                  <div className="text-gray-300">条目数量</div>
+                  <div className="text-white font-medium">{detailKnowledgeBase?.itemCount.toLocaleString()}</div>
+                </div>
+                <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                  <div className="text-gray-300">分类</div>
+                  <div className="text-white font-medium">{detailKnowledgeBase?.category}</div>
+                </div>
+                <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                  <div className="text-gray-300">创建者</div>
+                  <div className="text-white font-medium">{detailKnowledgeBase?.createdBy}</div>
+                </div>
+                <div className="bg-gray-800 bg-opacity-50 p-3 rounded-lg">
+                  <div className="text-gray-300">创建日期</div>
+                  <div className="text-white font-medium">{detailKnowledgeBase?.createdAt}</div>
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-medium text-white mb-3">知识库预览</h3>
+                <div className="space-y-3">
+                  {detailKnowledgeBase?.previewItems?.map((item) => (
+                    <div key={item.id} className="bg-gray-800 bg-opacity-50 p-4 rounded-lg">
+                      <h4 className="font-medium text-white mb-2">{item.title}</h4>
+                      <p className="text-gray-200 text-sm">{item.content}</p>
+                      {item.source && (
+                        <div className="mt-2 flex items-center text-xs text-indigo-300">
+                          <ExternalLink className="h-3 w-3 mr-1" />
+                          <span>{item.source}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-between">
+                <Button
+                  variant="outline"
+                  className="border-gray-700 text-gray-300 hover:text-white"
+                  onClick={() => setShowKnowledgeBaseDetail(false)}
+                >
+                  关闭
+                </Button>
+                <Button
+                  className="cosmic-button"
+                  onClick={() => {
+                    if (detailKnowledgeBase) {
+                      handleSelectKnowledgeBase(detailKnowledgeBase)
+                      setShowKnowledgeBaseDetail(false)
+                    }
+                  }}
+                >
+                  选择此知识库
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   )
 }
