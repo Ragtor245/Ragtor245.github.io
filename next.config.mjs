@@ -9,7 +9,6 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  // Add any existing configuration here
 }
 
 export default nextConfig
