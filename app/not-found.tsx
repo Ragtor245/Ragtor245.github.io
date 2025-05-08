@@ -1,24 +1,77 @@
-"use client"
-
-import Link from "next/link"
-import { Home } from "lucide-react"
-
 export default function NotFound() {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-900 text-white p-4">
-      <div className="space-y-6 text-center max-w-md">
-        <h1 className="text-4xl font-bold">404 - 页面未找到</h1>
-        <p className="text-xl text-gray-300">抱歉，您请求的页面不存在或已被移动。</p>
-        <div className="h-1 w-20 bg-indigo-600 mx-auto"></div>
-        <p className="text-gray-400">请检查URL是否正确，或返回首页继续浏览。</p>
-
-        <Link
-          href="/"
-          className="inline-flex items-center justify-center px-6 py-3 rounded-md bg-indigo-600 text-white font-medium hover:bg-indigo-700 transition-colors"
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        minHeight: "100vh",
+        backgroundColor: "#111827",
+        color: "white",
+        padding: "1rem",
+      }}
+    >
+      <div
+        style={{
+          textAlign: "center",
+          maxWidth: "28rem",
+        }}
+      >
+        <h1
+          style={{
+            fontSize: "2.25rem",
+            fontWeight: "bold",
+            marginBottom: "1rem",
+          }}
         >
-          <Home className="mr-2 h-5 w-5" />
+          404 - 页面未找到
+        </h1>
+
+        <p
+          style={{
+            fontSize: "1.25rem",
+            color: "#d1d5db",
+            marginBottom: "1.5rem",
+          }}
+        >
+          抱歉，您请求的页面不存在或已被移动。
+        </p>
+
+        <div
+          style={{
+            height: "0.25rem",
+            width: "5rem",
+            backgroundColor: "#4f46e5",
+            margin: "1.5rem auto",
+          }}
+        ></div>
+
+        <p
+          style={{
+            color: "#9ca3af",
+            marginBottom: "1.5rem",
+          }}
+        >
+          请检查URL是否正确，或返回首页继续浏览。
+        </p>
+
+        <a
+          href="/"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "0.75rem 1.5rem",
+            backgroundColor: "#4f46e5",
+            color: "white",
+            borderRadius: "0.375rem",
+            fontWeight: "500",
+            textDecoration: "none",
+          }}
+        >
           返回首页
-        </Link>
+        </a>
       </div>
     </div>
   )
