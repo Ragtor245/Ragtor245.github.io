@@ -1,6 +1,6 @@
 # [Ragtor智能知识平台](https://v0-ragtor-website-design.vercel.app/)
 一个面向中小企业和个人用户的RAG智能知识平台，支持用户共建主题知识库并进行智能问答，为您提供一站式定制化RAG解决方案，具有多用户协作空间。\
-[PRD Version-1.0](https://kdocs.cn/l/cesqaHanPxK4)
+[PRD Version-1.0]
 ## 🚀 核心功能
 为中小企业和个人提供**垂直领域知识服务**，实现精准知识获取与价值转化：
 ### 1.📚 Rag-Easy 知识库中心
